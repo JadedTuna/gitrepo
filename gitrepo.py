@@ -98,7 +98,7 @@ def gitdownload(button):
 view = ui.load_view('gitrepo')
 cb = clipboard.get().strip()
 parse = urlparse.urlparse(cb)
-if parse.scheme:
+if parse.netloc in ("www.github.com", "github.com"):
     path = [i for i in parse.path.split("/") if i]
     if len(path) >= 2:
         view.subviews[2].text = path[0] # Username
