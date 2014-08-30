@@ -29,7 +29,8 @@ class Delegate (object):
         # Return the title for the 'swipe-to-***' button.
         return 'Delete'
 
-repolink = "https://github.com/%(user)s/%(repo)s/archive/master.zip"
+repolink    = "https://github.com/%(user)s/%(repo)s/archive/master.zip"
+browselink  = "https://api.github.com/users/%(user)s/repos"
 releaselink = "https://api.github.com/repos/%(user)s/%(repo)s/releases"
 
 @ui.in_background
@@ -52,10 +53,10 @@ def download_repo(username, repo, unzip):
     try:
         page = urllib2.urlopen(repolink % formatdict)
     except urllib2.HTTPError as err:
-        if err.getcode() == 406:
-            console.alert("Error", "Repo not found", "Ok", hide_cancel_button=True)
-        else:
-            console.alert("Error", "Error downloading repo", "Ok", hide_cancel_button=True)
+        console.alert("Error", "Repo not found", "Ok", hide_cancel_button=True)
+        return
+    except:
+        console.alert("Error", "Error downloading repo", "Ok", hide_cancel_button=True)
         return
         
     data = page.read()
@@ -83,7 +84,7 @@ def download_release(username, repo, unzip):
         return
     
     else:
-        vers = [i["tag_name"] for i in data]
+        vers = sorted([i["tag_name"] for i in data])
         rview = release_view(vers)
         rview.present("sheet")
         rview.wait_modal()
@@ -99,11 +100,12 @@ def download_release(username, repo, unzip):
         save_zip(data, lastrls["name"], unzip)
         console.hud_alert("Done!")
 
+@ui.in_background
 def gitdownload(button):
-    isrelease = view.subviews[0].selected_index
-    username  = view.subviews[2].text
-    reponame  = view.subviews[4].text
-    unzip     = view.subviews[7].value
+    isrelease = view["sgcontrol"].selected_index
+    username  = view["username"].text
+    reponame  = view["reponame"].text
+    unzip     = view["dounzip"].value
     
     if not username.strip():
         console.alert("Error", "Please enter username", "Ok", hide_cancel_button=True)
@@ -120,9 +122,60 @@ def gitdownload(button):
         download_repo(username, reponame, unzip)
     console.hide_activity()
 
+@ui.in_background
+def gitbrowse(sender):
+    username  = view["username"].text
+    if not username.strip():
+        console.alert("Error", "Please enter username", "Ok", hide_cancel_button=True)
+        return
+    
+    formatdict = {
+        "user": username
+    }
+    try:
+        page = urllib2.urlopen(browselink % formatdict)
+    except urllib2.HTTPError as err:
+        console.alert("Error", "User not found", "Ok", hide_cancel_button=True)
+        return
+    except:
+        console.alert("Error", "Error downloading metadata", "Ok", hide_cancel_button=True)
+        return
+    data = json.load(StringIO(page.read()))
+    page.close()
+    
+    if "message" in data and data["message"] == "Not Found":
+        console.alert("Error", "User not found", "Ok", hide_cancel_button=True)
+        return
+    
+    else:
+        repos = sorted([i["name"] for i in data])
+        rview = repo_view(repos)
+        rview.present("sheet")
+        rview.wait_modal()
+        
+        row = rview["rtable"].delegate.selrow
+        if row is None: return
+        
+        repo = data[row]
+        view["reponame"].text = repo["name"]
+
 def release_view(releases):
     rview = ui.View(name="Choose release")
     lst   = ui.ListDataSource(releases)
+    delegate = Delegate()
+    
+    table = ui.TableView()
+    table.name = "rtable"
+    table.flex = "WH"
+    table.data_source = lst
+    table.delegate = delegate
+    
+    rview.add_subview(table)
+    return rview
+
+def repo_view(repos):
+    rview = ui.View(name="Choose a repo")
+    lst   = ui.ListDataSource(repos)
     delegate = Delegate()
     
     table = ui.TableView()
@@ -140,6 +193,6 @@ parse = urlparse.urlparse(cb)
 if parse.scheme:
     path = [i for i in parse.path.split("/") if i]
     if len(path) >= 2:
-        view.subviews[2].text = path[0] # Username
-        view.subviews[4].text = path[1] # Reponame
+        view["username"].text = path[0]
+        view["reponame"].text = path[1]
 view.present('popover')
