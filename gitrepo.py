@@ -1,10 +1,12 @@
 # coding: utf-8
 
 import ui
+import json
 import urllib2
 import console
 import zipfile
-import json
+import urlparse
+import clipboard
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -72,7 +74,6 @@ def download_release(username, repo, unzip):
         save_zip(data, lastrls["name"], unzip)
         console.hud_alert("Done!")
 
-@ui.in_background
 def gitdownload(button):
     isrelease = view.subviews[0].selected_index
     username  = view.subviews[2].text
@@ -95,4 +96,11 @@ def gitdownload(button):
     console.hide_activity()
 
 view = ui.load_view('gitrepo')
+cb = clipboard.get().strip()
+parse = urlparse.urlparse(cb)
+if parse.scheme:
+    path = [i for i in parse.path.split("/") if i]
+    if len(path) >= 2:
+        view.subviews[2].text = path[0] # Username
+        view.subviews[4].text = path[1] # Reponame
 view.present('popover')
