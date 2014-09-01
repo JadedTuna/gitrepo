@@ -17,7 +17,7 @@ import console, os.path
 NAME     = "gitrepo"
 PYFILE   = """# coding: utf-8
 
-import clipboard, console, requests, ui, urlparse, zipfile
+import clipboard, console, requests, ui, urlparse, zipfile, re
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -31,12 +31,16 @@ class Delegate (object):
         self.selected_item = tableview.data_source.items[row]
         tableview.superview.close()
 
-repolink    = "https://github.com/{}/{}/archive/master.zip"
-browselink  = "https://api.github.com/users/{}/repos"
-releaselink = "https://api.github.com/repos/{}/{}/releases"
+repolink     = "https://github.com/{}/{}/archive/master.zip"
+browselink   = "https://api.github.com/users/{}/repos"
+releaselink  = "https://api.github.com/repos/{}/{}/releases"
+parselink    = re.compile("<[\S]*?page=(\d+)>; rel=\"last\"").search
 
 def error_alert(msg="General error"):
     console.alert("Error", msg, "OK", hide_cancel_button=True)
+
+def get_page_num(link_header):
+    return int(parselink(link_header).group(1))
 
 @ui.in_background
 def save_zip(data, name, unzip):
@@ -106,15 +110,23 @@ def gitbrowse(sender):
         return error_alert("Please enter username")
     url = browselink.format(username)
     try:
-        data = requests.get(url).json()  # normally returns a list of dicts
+        req  = requests.get(url)
+        data = req.json()  # normally returns a list of dicts
     except requests.HTTPError as err:
         return error_alert("User '{}' not found".format(username))
     except Exception as err:
         return error_alert("Error downloading metadata: {}".format(err))
     if isinstance(data, dict) and data["message"] == "Not Found":
         return error_alert("User '{}' not found".format(username))
-    
-    repos = sorted([i["name"] for i in data])
+    finaldata = data
+    if "link" in req.headers:
+        pages = get_page_num(req.headers["link"])
+        for lnk in range(2, pages + 1):
+            link = browselink.format(username) + "?page=%d" % lnk
+            req = requests.get(link)
+            finaldata += req.json()
+        
+    repos = sorted([i["name"] for i in finaldata])
     if not repos:
         return error_alert("User '{}' has no repos".format(username))
     rview = data_view("repo", repos)
