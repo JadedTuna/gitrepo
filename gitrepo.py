@@ -34,8 +34,13 @@ def save_zip(data, name, unzip):
 @ui.in_background
 def download_repo(username, repo, unzip):
     url = repolink.format(username, repo)
+    data = requests.get(url)
+    if isinstance(data, dict) and data["message"] == "Not Found":
+        return error_alert("User '{}' not found".format(username))
+    elif not data:
+        return error_alert("Repo '{}' not found".format(repo))
     try:
-        save_zip(requests.get(url).content, repo, unzip)
+        save_zip(data.content, repo, unzip)
     except Exception as err:
         return error_alert("Error downloading repo: {}".format(err))
     console.hud_alert("Done!")
@@ -45,7 +50,7 @@ def download_release(username, repo, unzip):
     url = releaselink.format(username, repo)
     data = requests.get(url).json()
     if not data:
-        return error_alert("This repo has no releases: " + url)
+        return error_alert("Repo '{}' has no releases".format(repo))
     elif "message" in data and data["message"] == "Not Found":
         return error_alert("Repo '{}' not found".format(repo))
     vers = sorted([i["tag_name"] for i in data])
@@ -86,12 +91,15 @@ def gitbrowse(sender):
     try:
         data = requests.get(url).json()  # normally returns a list of dicts
     except requests.HTTPError as err:
-        return console.alert("User '{}' not found".format(username))
+        return error_alert("User '{}' not found".format(username))
     except Exception as err:
-        return console.alert("Error downloading metadata: {}".format(err))
+        return error_alert("Error downloading metadata: {}".format(err))
     if isinstance(data, dict) and data["message"] == "Not Found":
-        return console.alert("User '{}' not found".format(username))
+        return error_alert("User '{}' not found".format(username))
+    
     repos = sorted([i["name"] for i in data])
+    if not repos:
+        return error_alert("User '{}' has no repos".format(username))
     rview = data_view("repo", repos)
     rview.present("sheet")
     rview.wait_modal()
@@ -114,7 +122,7 @@ view = ui.load_view('gitrepo')
 for name in 'username reponame'.split():
     view[name].autocapitalization_type = ui.AUTOCAPITALIZE_NONE
 parse = urlparse.urlparse(clipboard.get().strip())
-if parse.scheme:
+if parse.netloc in "www.github.com github.com".split():
     path = [i for i in parse.path.split("/") if i]
     if len(path) >= 2:
         view["username"].text, view["reponame"].text = path[:2]
