@@ -1,6 +1,6 @@
 # coding: utf-8
 
-import clipboard, console, requests, ui, urlparse, zipfile, re
+import clipboard, console, requests, ui, urlparse, zipfile, re, os
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -15,6 +15,7 @@ class Delegate (object):
         tableview.superview.close()
 
 repolink     = "https://github.com/{}/{}/archive/master.zip"
+gistslink    = "https://api.github.com/users/{}/gists"
 browselink   = "https://api.github.com/users/{}/repos"
 releaselink  = "https://api.github.com/repos/{}/{}/releases"
 parselink    = re.compile("<[\S]*?page=(\d+)>; rel=\"last\"").search
@@ -70,20 +71,45 @@ def download_release(username, repo, unzip):
                 return console.hud_alert("Done!")
 
 @ui.in_background
+def download_gist(username, gist):
+    url = gistslink.format(username, gist)
+    req = requests.get(url)
+    data = req.json()
+    req.close()
+    
+    info = [i for i in data if i["id"] == gist]
+    if not info:
+        return error_alert("Gist '{}' not found".format(gist))
+    info = info[0]
+    files = info["files"]
+    try:
+        os.mkdir(gist)
+    except:
+        pass
+    for fpinfo in files.values():
+        data = requests.get(fpinfo["raw_url"]).content
+        with open(os.path.join(gist,
+                  fpinfo["filename"]), "wb") as fp:
+            fp.write(data)
+    return console.hud_alert("Done!")
+
+@ui.in_background
 def gitdownload(button):
-    isrelease = view["sgcontrol"].selected_index
-    username  = view["username"].text = view["username"].text.strip()
-    reponame  = view["reponame"].text = view["reponame"].text.strip()
-    unzip     = view["dounzip"].value
+    index    = view["sgcontrol"].selected_index
+    username = view["username"].text = view["username"].text.strip()
+    reponame = view["reponame"].text = view["reponame"].text.strip()
+    unzip    = view["dounzip"].value
     if not username:
         return error_alert("Please enter username")
     if not reponame:
         return error_alert("Please enter repo name")
     console.show_activity()
-    if isrelease:
-        download_release(username, reponame, unzip)
-    else:
+    if index == 0:
         download_repo(username, reponame, unzip)
+    elif index == 1:
+        download_release(username, reponame, unzip)
+    elif index == 2:
+        download_gist(username, reponame)
     console.hide_activity()
 
 @ui.in_background
@@ -91,7 +117,11 @@ def gitbrowse(sender):
     username = view["username"].text = view["username"].text.strip()
     if not username:
         return error_alert("Please enter username")
-    url = browselink.format(username)
+    index = view["sgcontrol"].selected_index
+    if index == 2:
+        url = gistslink.format(username)
+    else:
+        url = browselink.format(username)
     try:
         req  = requests.get(url)
         data = req.json()  # normally returns a list of dicts
@@ -108,16 +138,27 @@ def gitbrowse(sender):
             link = browselink.format(username) + "?page=%d" % lnk
             req = requests.get(link)
             finaldata += req.json()
+    
+    if index == 2:
+        nameid_dict = {}
+        for fpinfo in finaldata:
+            nameid_dict[", ".join(fpinfo["files"].keys())] = fpinfo["id"]
+        names = nameid_dict.keys()
+    else:
+        names = sorted([i["name"] for i in finaldata])
         
-    repos = sorted([i["name"] for i in finaldata])
-    if not repos:
-        return error_alert("User '{}' has no repos".format(username))
-    rview = data_view("repo", repos)
+    name  = {0: "repos", 1: "repos", 2: "gists"}[index]
+    if not names:
+        return error_alert("User '{}' has no {}".format(username, name))
+    rview = data_view(name[:-1], names)
     rview.present("sheet")
     rview.wait_modal()
     tapped_text = rview["rtable"].delegate.selected_item
     if tapped_text:
-        view["reponame"].text = tapped_text
+        if index == 2:
+            view["reponame"].text = nameid_dict[tapped_text]
+        else:
+            view["reponame"].text = tapped_text
 
 def data_view(name, data):
     rview = ui.View(name="Choose a " + name)
@@ -130,6 +171,15 @@ def data_view(name, data):
     rview.add_subview(table)
     return rview
 
+def segchange(sender):
+    index = sender.selected_index
+    if index == 2: # Gist
+        view["repolabel"].text = "Gist ID:"
+        view["bbutton"].title  = "Browse gists"
+    else:
+        view["repolabel"].text = "Repo:"
+        view["bbutton"].title  = "Browse repos"
+
 view = ui.load_view('gitrepo')
 for name in 'username reponame'.split():
     view[name].autocapitalization_type = ui.AUTOCAPITALIZE_NONE
@@ -138,4 +188,5 @@ if parse.netloc in "www.github.com github.com".split():
     path = [i for i in parse.path.split("/") if i]
     if len(path) >= 2:
         view["username"].text, view["reponame"].text = path[:2]
+view["sgcontrol"].action = segchange
 view.present('popover')
