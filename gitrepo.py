@@ -18,7 +18,7 @@ repolink     = "https://github.com/{}/{}/archive/master.zip"
 gistslink    = "https://api.github.com/users/{}/gists"
 browselink   = "https://api.github.com/users/{}/repos"
 releaselink  = "https://api.github.com/repos/{}/{}/releases"
-parselink    = re.compile("<[\S]*?page=(\d+)>; rel=\"last\"").search
+parselink    = re.compile(r'<[\S]*?page=(\d+)>; rel="last"').search
 
 def error_alert(msg="General error"):
     console.alert("Error", msg, "OK", hide_cancel_button=True)
