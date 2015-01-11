@@ -193,5 +193,8 @@ if parse.netloc in "www.github.com github.com".split():
     path = [i for i in parse.path.split("/") if i]
     if len(path) >= 2:
         view["username"].text, view["reponame"].text = path[:2]
+    if len(path) >= 4:
+        view["reponame"].text += '/' + path[3]
+
 view["sgcontrol"].action = segchange
 view.present('popover')
