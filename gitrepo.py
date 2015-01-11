@@ -8,10 +8,15 @@ except ImportError:
 
 class Delegate (object):
     def __init__(self):
-        self.selected_item = None
+        self.nameid_dict = {}
+        self.index = 0
     
     def tableview_did_select(self, tableview, section, row):
-        self.selected_item = tableview.data_source.items[row]
+        tapped_text = tableview.data_source.items[row]
+        if self.index == 2:
+            view["reponame"].text = self.nameid_dict[tapped_text]
+        else:
+            view["reponame"].text = tapped_text
         tableview.superview.close()
 
 repolink     = "https://github.com/{}/{}/archive/{}.zip"
@@ -19,6 +24,10 @@ gistslink    = "https://api.github.com/users/{}/gists"
 browselink   = "https://api.github.com/users/{}/repos"
 releaselink  = "https://api.github.com/repos/{}/{}/releases"
 parselink    = re.compile(r'<[\S]*?page=(\d+)>; rel="last"').search
+
+@ui.in_background
+def _error_alert(msg="General error"):
+    return error_alert(msg)
 
 def error_alert(msg="General error"):
     console.alert("Error", msg, "OK", hide_cancel_button=True)
@@ -117,11 +126,10 @@ def gitdownload(button):
         download_gist(username, reponame)
     console.hide_activity()
 
-@ui.in_background
 def gitbrowse(sender):
     username = view["username"].text = view["username"].text.strip()
     if not username:
-        return error_alert("Please enter username")
+        return _error_alert("Please enter username")
     index = view["sgcontrol"].selected_index
     if index == 2:
         url = gistslink.format(username)
@@ -131,11 +139,11 @@ def gitbrowse(sender):
         req  = requests.get(url)
         data = req.json()  # normally returns a list of dicts
     except requests.HTTPError as err:
-        return error_alert("User '{}' not found".format(username))
+        return _error_alert("User '{}' not found".format(username))
     except Exception as err:
-        return error_alert("Error downloading metadata: {}".format(err))
+        return _error_alert("Error downloading metadata: {}".format(err))
     if isinstance(data, dict) and data["message"] == "Not Found":
-        return error_alert("User '{}' not found".format(username))
+        return _error_alert("User '{}' not found".format(username))
     finaldata = data
     if "link" in req.headers:
         pages = get_page_num(req.headers["link"])
@@ -144,8 +152,8 @@ def gitbrowse(sender):
             req = requests.get(link)
             finaldata += req.json()
     
+    nameid_dict = {}
     if index == 2:
-        nameid_dict = {}
         for fpinfo in finaldata:
             nameid_dict[", ".join(fpinfo["files"].keys())] = fpinfo["id"]
         names = nameid_dict.keys()
@@ -154,16 +162,15 @@ def gitbrowse(sender):
         
     name  = {0: "repos", 1: "repos", 2: "gists"}[index]
     if not names:
-        return error_alert("User '{}' has no {}".format(username, name))
+        return _error_alert("User '{}' has no {}".format(username, name))
+        
     rview = data_view(name[:-1], names)
+    
+    rview["rtable"].delegate.index = index
+    rview["rtable"].delegate.nameid_dict = nameid_dict
+    
     rview.present("sheet")
     rview.wait_modal()
-    tapped_text = rview["rtable"].delegate.selected_item
-    if tapped_text:
-        if index == 2:
-            view["reponame"].text = nameid_dict[tapped_text]
-        else:
-            view["reponame"].text = tapped_text
 
 def data_view(name, data):
     rview = ui.View(name="Choose a " + name)
