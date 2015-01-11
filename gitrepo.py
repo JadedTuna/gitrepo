@@ -1,6 +1,6 @@
 # coding: utf-8
 
-import clipboard, console, requests, ui, urlparse, zipfile, re, os
+import clipboard, console, requests, ui, urlparse, zipfile, re, os, string
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -14,7 +14,7 @@ class Delegate (object):
         self.selected_item = tableview.data_source.items[row]
         tableview.superview.close()
 
-repolink     = "https://github.com/{}/{}/archive/master.zip"
+repolink     = "https://github.com/{}/{}/archive/{}.zip"
 gistslink    = "https://api.github.com/users/{}/gists"
 browselink   = "https://api.github.com/users/{}/repos"
 releaselink  = "https://api.github.com/repos/{}/{}/releases"
@@ -37,8 +37,8 @@ def save_zip(data, name, unzip):
             zp.write(data)
 
 @ui.in_background
-def download_repo(username, repo, unzip):
-    url = repolink.format(username, repo)
+def download_repo(username, repo, branch, unzip):
+    url = repolink.format(username, repo, branch)
     data = requests.get(url)
     if isinstance(data, dict) and data["message"] == "Not Found":
         return error_alert("User '{}' not found".format(username))
@@ -98,6 +98,11 @@ def gitdownload(button):
     index    = view["sgcontrol"].selected_index
     username = view["username"].text = view["username"].text.strip()
     reponame = view["reponame"].text = view["reponame"].text.strip()
+    if '/' in reponame:
+        reponame, branch = string.split(reponame, '/', maxsplit=1)
+        if not branch: branch = 'master'
+    else:
+        branch = 'master'
     unzip    = view["dounzip"].value
     if not username:
         return error_alert("Please enter username")
@@ -105,7 +110,7 @@ def gitdownload(button):
         return error_alert("Please enter repo name")
     console.show_activity()
     if index == 0:
-        download_repo(username, reponame, unzip)
+        download_repo(username, reponame, branch, unzip)
     elif index == 1:
         download_release(username, reponame, unzip)
     elif index == 2:
